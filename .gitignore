@@ -1,0 +1,8 @@
+logs
+data
+.ipynb_checkpoints
+__pycache__
+*.rdb
+*.png
+*.md
+*.html
