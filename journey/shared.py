@@ -21,22 +21,11 @@ os.environ.setdefault('JAVA_HOME', '/usr/lib/jvm/java-17-openjdk-amd64')
 KAFKA_BROKER = 'localhost:9092'
 REDIS_HOST   = 'localhost'
 REDIS_PORT   = 6379
-REDIS_TTL    = 300
 
 SPARK_KAFKA_PACKAGE = 'org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0'
 
 
-# ---------------------------------------------------------------------------
-# Spark Session
-# ---------------------------------------------------------------------------
-
 def make_spark(app_name: str, with_kafka: bool = False):
-    """Erstellt oder holt eine SparkSession (local[*]).
-    
-    Args:
-        app_name:   Anzeigename in der Spark UI.
-        with_kafka: True → Kafka-Package wird mitgeladen (streaming).
-    """
     from pyspark.sql import SparkSession
 
     builder = (
@@ -54,22 +43,7 @@ def make_spark(app_name: str, with_kafka: bool = False):
     print(f'Spark {spark.version} gestartet  [{app_name}]')
     return spark
 
-
-# ---------------------------------------------------------------------------
-# Kafka helpers
-# ---------------------------------------------------------------------------
-
 def kafka_stream(spark, topic: str, starting_offsets: str = 'earliest'):
-    """Liest einen Kafka-Topic als unbegrenzten DataFrame (Structured Streaming).
-
-    Args:
-        spark:            SparkSession (muss mit with_kafka=True gebaut sein).
-        topic:            Kafka-Topic-Name.
-        starting_offsets: 'earliest' oder 'latest'.
-
-    Returns:
-        Raw-DataFrame mit Spalte 'value' (bytes).
-    """
     return (
         spark.readStream
         .format('kafka')
@@ -79,10 +53,6 @@ def kafka_stream(spark, topic: str, starting_offsets: str = 'earliest'):
         .load()
     )
 
-
-# ---------------------------------------------------------------------------
-# Redis helpers
-# ---------------------------------------------------------------------------
 
 def fmt_num(value, decimals: int = 6) -> str:
     """Formatiert einen numerischen Wert für Redis-Speicherung (kein Spark-round)."""
@@ -96,15 +66,10 @@ def redis_client() -> _redis_module.Redis:
     return _redis_module.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
 
-def write_redis_batch(r: _redis_module.Redis, key: str, mapping: Dict[str, str], ttl: int = REDIS_TTL):
-    """Schreibt ein Hash in Redis und setzt TTL."""
+def write_redis_batch(r: _redis_module.Redis, key: str, mapping: Dict[str, str], ttl: int = 30):
     r.hset(key, mapping=mapping)
     r.expire(key, ttl)
 
-
-# ---------------------------------------------------------------------------
-# Live-HTML-Karte
-# ---------------------------------------------------------------------------
 
 def rebuild_live_map(
     r: _redis_module.Redis,
@@ -120,24 +85,6 @@ def rebuild_live_map(
     colormap: str = 'RdYlGn',
     center: tuple = None,
 ):
-    """Liest alle Redis-Keys und schreibt eine aktualisierte Folium-HTML-Karte.
-
-    Diese Funktion wird nach jedem Mikro-Batch aufgerufen und überschreibt die HTML-Datei,
-    sodass ein Reload im Browser die neuesten Daten zeigt.
-
-    Args:
-        r:             Redis-Client.
-        key_pattern:   Glob-Pattern für Keys, z.B. 'journey:walk:*'.
-        lat_field:     Redis-Hash-Feld für Breitengrad.
-        lon_field:     Redis-Hash-Feld für Längengrad.
-        color_field:   Redis-Hash-Feld, nach dem eingefärbt wird.
-        color_low/high: Min/Max-Wert für die Farbskala.
-        popup_fields:  Liste von Redis-Feldern, die im Popup erscheinen.
-        out_html:      Zielpfad der HTML-Datei.
-        title:         Titel für Legende.
-        colormap:      matplotlib-Colormap-Name.
-        center:        (lat, lon) Kartenmitte; wenn None → erster Datenpunkt.
-    """
     keys = r.keys(key_pattern)
     if not keys:
         return
@@ -151,7 +98,6 @@ def rebuild_live_map(
 
     records.sort(key=lambda rec: rec.get('fenster_start', ''))
 
-    # Mittelpunkt
     lats = [float(rec[lat_field]) for rec in records if lat_field in rec and rec[lat_field]]
     lons = [float(rec[lon_field]) for rec in records if lon_field in rec and rec[lon_field]]
     if not lats:
@@ -205,10 +151,6 @@ def rebuild_live_map(
     karte.get_root().html.add_child(folium.Element(refresh_html))
     karte.save(out_html)
 
-
-# ---------------------------------------------------------------------------
-# Streaming query helper
-# ---------------------------------------------------------------------------
 
 def run_stream(query, on_stop=None):
     """Wartet auf Streaming-Query, bricht bei Ctrl+C sauber ab."""
