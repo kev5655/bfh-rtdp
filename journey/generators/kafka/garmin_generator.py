@@ -17,7 +17,6 @@ SEMICIRCLES  = 180.0 / 2**31
 
 
 def purge_topic():
-    """Löscht und erstellt den Kafka-Topic neu (leert alle alten Daten)."""
     admin = KafkaAdminClient(bootstrap_servers=KAFKA_BROKER)
     try:
         admin.delete_topics([KAFKA_TOPIC])
@@ -34,7 +33,6 @@ def purge_topic():
 
 
 def parse_fit():
-    """Liest FIT-Records und gibt Rohwerte zurück (Koordinaten in Dezimalgrad)."""
     fitfile = fitparse.FitFile(FIT_PATH)
     for msg in fitfile.get_messages('record'):
         row = {f.name: f.value for f in msg}
@@ -50,7 +48,7 @@ def parse_fit():
         if abs(lat) > 90 or abs(lon) > 180:
             continue
 
-        alt  = float(row.get('enhanced_altitude') or row.get('altitude') or 0)
+        alt  = float(row.get('altitude') or 0)
         hr   = float(row.get('heart_rate')  or 0)
         temp = float(row.get('temperature') or 0)
 
