@@ -48,7 +48,7 @@ def parse_fit():
         if abs(lat) > 90 or abs(lon) > 180:
             continue
 
-        alt  = float(row.get('altitude') or 0)
+        alt  = float(row.get('enhanced_altitude') or 0) #or row.get('altitude') or 0
         hr   = float(row.get('heart_rate')  or 0)
         temp = float(row.get('temperature') or 0)
 
