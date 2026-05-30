@@ -176,6 +176,7 @@ start_spark() {
   if [[ -x "/opt/spark/sbin/start-master.sh" ]]; then
     echo "[spark] starting standalone + history server"
     mkdir -p /tmp/spark-events
+    export SPARK_LOCAL_IP="$HOST_IP"
     /opt/spark/sbin/start-master.sh
     /opt/spark/sbin/start-worker.sh "spark://$HOST_IP:7077"
     SPARK_HISTORY_OPTS="-Dspark.history.fs.logDirectory=file:/tmp/spark-events -Dspark.history.ui.port=18080" \
