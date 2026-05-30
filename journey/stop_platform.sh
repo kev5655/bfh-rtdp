@@ -25,13 +25,16 @@ if ! stop_unit_if_exists "grafana-server.service" && ! stop_unit_if_exists "graf
   pkill -f "[g]rafana-server|/opt/grafana_13_0_1/bin/grafana" >/dev/null 2>&1 || true
 fi
 
+# Kafdrop
+pkill -f "[k]afdrop" >/dev/null 2>&1 || true
+
 # Kafka + Zookeeper
 if ! stop_unit_if_exists "kafka.service"; then
-  /opt/kafka/bin/kafka-server-stop.sh >/dev/null 2>&1 || true
+  kafka-server-stop.sh >/dev/null 2>&1 || true
   pkill -f "[k]afka\.Kafka" >/dev/null 2>&1 || true
 fi
 if ! stop_unit_if_exists "zookeeper.service"; then
-  /opt/kafka/bin/zookeeper-server-stop.sh >/dev/null 2>&1 || true
+  zkServer.sh stop >/dev/null 2>&1 || true
   pkill -f "[Q]uorumPeerMain" >/dev/null 2>&1 || true
 fi
 

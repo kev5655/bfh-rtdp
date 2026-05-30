@@ -21,7 +21,8 @@ except ImportError:
     sys.exit(1)
 
 from kafka import KafkaProducer
-from shared import KAFKA_BROKER
+
+KAFKA_BROKER = 'localhost:9092'
 
 FIT_PATH     = '/home/bfh/rtdp/data/22996735627_ACTIVITY.fit'
 KAFKA_TOPIC  = 'journey.garmin'

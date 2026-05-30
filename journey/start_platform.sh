@@ -65,10 +65,9 @@ start_zookeeper() {
     wait_for_port 2181 "zookeeper" 30 || true
     return
   fi
-  if [[ -x "/opt/kafka/bin/zookeeper-server-start.sh" ]]; then
-    echo "[zookeeper] restarting via Kafka scripts"
-    /opt/kafka/bin/zookeeper-server-stop.sh >/dev/null 2>&1 || true
-    /opt/kafka/bin/zookeeper-server-start.sh -daemon /opt/kafka/config/zookeeper.properties
+  if command -v zkServer.sh >/dev/null 2>&1; then
+    echo "[zookeeper] starting via zkServer.sh"
+    zkServer.sh start
     wait_for_port 2181 "zookeeper" 30 || true
     return
   fi
@@ -81,13 +80,11 @@ start_kafka() {
     wait_for_kafka_api 40 || true
     return
   fi
-  if [[ -x "/opt/kafka/bin/kafka-server-start.sh" ]]; then
-    echo "[kafka] restarting via Kafka scripts"
+  if command -v kafka-server-start.sh >/dev/null 2>&1; then
+    echo "[kafka] starting via kafka-server-start.sh"
     local attempt
     for attempt in 1 2 3; do
-      /opt/kafka/bin/kafka-server-stop.sh >/dev/null 2>&1 || true
-      sleep 2
-      /opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
+      kafka-server-start.sh -daemon /opt/kafka/config/server.properties
       if wait_for_port 9092 "kafka" 25 && wait_for_kafka_api 25; then
         echo "[kafka] ready (attempt $attempt)"
         return
@@ -101,15 +98,23 @@ start_kafka() {
   echo "[kafka] not found (skipped)"
 }
 
+start_kafdrop() {
+  if [[ -x "/opt/kafdrop/start-kafdrop.sh" ]]; then
+    echo "[kafdrop] starting"
+    cd /opt/kafdrop && nohup ./start-kafdrop.sh >"$LOG_DIR/kafdrop.log" 2>&1 &
+    cd "$BASE_DIR"
+    wait_for_port 9999 "kafdrop" 20 || true
+    return
+  fi
+  echo "[kafdrop] not found (skipped)"
+}
+
 start_redis() {
   if restart_unit_if_exists "redis-server.service" || restart_unit_if_exists "redis.service"; then
     return
   fi
-  if command -v redis-cli >/dev/null 2>&1; then
-    redis-cli shutdown nosave >/dev/null 2>&1 || true
-  fi
   if command -v redis-server >/dev/null 2>&1; then
-    echo "[redis] restarting via redis-server"
+    echo "[redis] starting via redis-server"
     redis-server --daemonize yes
     return
   fi
@@ -120,9 +125,7 @@ start_prometheus() {
   if restart_unit_if_exists "prometheus.service"; then
     return
   fi
-  echo "[prometheus] restarting via binary"
-  pkill -f "[p]rometheus|/opt/prometheus/prometheus" >/dev/null 2>&1 || true
-
+  echo "[prometheus] starting via binary"
   # Prefer local install style:
   #   cd /opt/prometheus
   #   prometheus &
@@ -153,9 +156,7 @@ start_grafana() {
     return
   fi
 
-  echo "[grafana] restarting via binary"
-  pkill -f "[g]rafana-server|/opt/grafana_13_0_1/bin/grafana" >/dev/null 2>&1 || true
-
+  echo "[grafana] starting via binary"
   # Prefer grafana-server when available.
   if command -v grafana-server >/dev/null 2>&1; then
     nohup grafana-server --homepath /opt/grafana_13_0_1 >"$LOG_DIR/grafana.log" 2>&1 &
@@ -173,11 +174,7 @@ start_grafana() {
 
 start_spark() {
   if [[ -x "/opt/spark/sbin/start-master.sh" ]]; then
-    echo "[spark] restarting standalone + history server"
-    /opt/spark/sbin/stop-worker.sh >/dev/null 2>&1 || true
-    /opt/spark/sbin/stop-master.sh >/dev/null 2>&1 || true
-    /opt/spark/sbin/stop-history-server.sh >/dev/null 2>&1 || true
-
+    echo "[spark] starting standalone + history server"
     mkdir -p /tmp/spark-events
     /opt/spark/sbin/start-master.sh
     /opt/spark/sbin/start-worker.sh "spark://$HOST_IP:7077"
@@ -194,11 +191,9 @@ start_hadoop_optional() {
     return
   fi
   if [[ -x "/opt/hadoop/sbin/start-dfs.sh" ]]; then
-    echo "[hadoop] restarting HDFS"
-    /opt/hadoop/sbin/stop-dfs.sh >/dev/null 2>&1 || true
+    echo "[hadoop] starting HDFS"
     /opt/hadoop/sbin/start-dfs.sh >/dev/null 2>&1 || true
     if [[ -x "/opt/hadoop/sbin/start-yarn.sh" ]]; then
-      /opt/hadoop/sbin/stop-yarn.sh >/dev/null 2>&1 || true
       /opt/hadoop/sbin/start-yarn.sh >/dev/null 2>&1 || true
     fi
     return
@@ -215,11 +210,12 @@ check_port() {
   fi
 }
 
-echo "Starting platform services (restart if running)..."
+echo "Starting platform services..."
 start_prometheus
 start_grafana
 start_zookeeper
 start_kafka
+start_kafdrop
 start_redis
 start_spark
 start_hadoop_optional
@@ -231,6 +227,7 @@ echo
 printf 'Access URLs:\n'
 printf 'Prometheus: http://%s:9090\n' "$HOST_IP"
 printf 'Grafana:    http://%s:3000\n' "$HOST_IP"
+printf 'Kafdrop:    http://%s:9999\n' "$HOST_IP"
 printf 'Spark UI:   http://%s:8080\n' "$HOST_IP"
 printf 'Spark Hist: http://%s:18080\n' "$HOST_IP"
 printf 'Kafka:      %s:9092\n' "$HOST_IP"
@@ -240,7 +237,7 @@ printf 'Hadoop UI:  http://%s:9870 (if installed)\n' "$HOST_IP"
 
 echo
 echo "Port checks (LISTEN):"
-for p in 9090 3000 2181 9092 6379 8080 18080 9870; do
+for p in 9090 3000 9999 2181 9092 6379 8080 18080 9870; do
   if check_port "$p"; then
     echo "  - $p: up"
   else
