@@ -1,12 +1,27 @@
+from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 from pyspark.sql.functions import *
-from shared import make_spark, kafka_stream, fmt_num, redis_client, write_redis_batch, run_stream
+from shared import fmt_num, redis_client, write_redis_batch, run_stream
 
+HOST_IP          = '10.248.16.109'
+KAFKA_BROKER     = 'localhost:9092'
+TOPIC            = 'journey.gyroscope'
 REDIS_KEY_PREFIX = 'journey:gyro'
 
-spark = make_spark('Journey-Part5-Redis', with_kafka=True)
+spark = (SparkSession.builder.appName('Journey-Part5-Redis')
+    .master(f'spark://{HOST_IP}:7077')
+    .config('spark.driver.host', HOST_IP)
+    .config('spark.driver.bindAddress', HOST_IP)
+    .config('spark.eventLog.enabled', 'true')
+    .config('spark.eventLog.dir', 'file:///tmp/spark-events')
+    .config('spark.sql.shuffle.partitions', '4')
+    .getOrCreate())
 
-df_raw = kafka_stream(spark, 'journey.gyroscope')
+df_raw = (spark.readStream.format('kafka')
+    .option('kafka.bootstrap.servers', KAFKA_BROKER)
+    .option('subscribe', TOPIC)
+    .option('startingOffsets', 'earliest')
+    .load())
 
 df_parsed = (
     df_raw
@@ -55,7 +70,7 @@ def write_to_redis(batch_df, epoch_id):
             'avg_gy':        fmt_num(row['avg_gy']),
             'avg_gz':        fmt_num(row['avg_gz']),
             'n_samples':     str(row['n_samples']),
-        }, ttl=30)
+        }, ttl=120)
     print(f"[Redis] Epoch {epoch_id}: {len(rows)} Fenster geschrieben")
 
 print("\nStream → Redis gestartet. Abbrechen mit Ctrl+C\n")
@@ -63,7 +78,7 @@ query = (
     df_result.writeStream
     .outputMode('update')
     .foreachBatch(write_to_redis)
-    .trigger(processingTime='5 seconds')
+    .trigger(processingTime='1 seconds')
     .start()
 )
 run_stream(query, on_stop=spark.stop)
